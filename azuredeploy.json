@@ -75,10 +75,11 @@
 			"apiVersion": "2022-03-01",
 			"name": "[variables('hostingPlanName')]",
 			"location": "[parameters('location')]",
+			"kind": "functionapp",
 			"sku": {
-				"name": "P1V2",
+				"name": "Y1",
 				"tier": "Dynamic",
-				"size": "P1V2",
+				"size": "Y1",
 				"family": "Y"
 			},
 			"properties": {

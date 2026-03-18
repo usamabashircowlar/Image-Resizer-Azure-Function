@@ -33,7 +33,7 @@ namespace ImageResizerFunction.ImageProcessors
 		private readonly CommandParser _commandParser;
 
 		private readonly IImageWebProcessor[] _imageWebProcessors;
-		
+
 		public RasterImageProcessor(CommandParser commandParser)
 		{
 			_commandParser = commandParser;
@@ -51,7 +51,8 @@ namespace ImageResizerFunction.ImageProcessors
 				Stream blob,
 				ILogger log)
 		{
-			using var image = Image.Load(blob, out var imageFormat);
+			using var image = Image.Load(blob);
+			var imageFormat = image.Metadata.DecodedImageFormat;
 			var parser = new QueryCollectionRequestParser();
 			var commands = parser.ParseRequestCommands(httpContext);
 

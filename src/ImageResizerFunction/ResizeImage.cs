@@ -1,10 +1,10 @@
 using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Azure.Storage.Blobs.Specialized;
 using ImageResizerFunction.ImageProcessors;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SixLabors.ImageSharp.Web.Caching;
@@ -12,7 +12,6 @@ using SixLabors.ImageSharp.Web.Middleware;
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Azure.Storage.Blobs.Models;
 
 namespace ImageResizerFunction
 {
@@ -26,11 +25,13 @@ namespace ImageResizerFunction
 		private readonly BlobContainerClient _cacheContainer;
 
 		private readonly ICacheHash _cacheHash;
+		private readonly ILogger<ResizeImage> _log;
 
 
 		public ResizeImage(
 			RasterImageProcessor rasterImageProcessor,
-			PassThroughImageProcessor passThroughImageProcessor)
+			PassThroughImageProcessor passThroughImageProcessor,
+			ILogger<ResizeImage> log)
 		{
 			_processors = new IImageProcessor[]
 			{
@@ -43,24 +44,24 @@ namespace ImageResizerFunction
 			var cacheContainerName = Environment.GetEnvironmentVariable("CacheContainer").ToLower();
 
 			_cacheHash = new SHA256CacheHash(Options.Create(new ImageSharpMiddlewareOptions()));
+			_log = log;
 
 			_cacheContainer = new BlobContainerClient(connectionString, cacheContainerName);
 			_container = new BlobContainerClient(connectionString, containerName);
 		}
 
-		[FunctionName("Resize")]
+		[Function("Resize")]
 		public async Task<IActionResult> Run(
 				[HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "{*path}")] HttpRequest req,
-				string path,
-				ILogger log)
+				string path)
 		{
 			var key = _cacheHash.Create(path + req.HttpContext.Request.QueryString, 12);
-			
+
 			if (!await _cacheContainer.ExistsAsync())
 			{
 				await _cacheContainer.CreateAsync();
 			}
-			
+
 			var cachedBlob = _cacheContainer.GetBlockBlobClient(key);
 			var cacheExists = await cachedBlob.ExistsAsync();
 			if (cacheExists.Value)
@@ -72,7 +73,7 @@ namespace ImageResizerFunction
 					return new FileStreamResult(await cachedBlob.OpenReadAsync(), cachedProperties.Value.ContentType);
 				}
 			}
-			
+
 			var blob = _container.GetBlockBlobClient(path);
 			var exists = await blob.ExistsAsync();
 			if (!exists.Value)
@@ -87,11 +88,11 @@ namespace ImageResizerFunction
 			{
 				if (processor.IsValidForPath(path))
 				{
-					response = await processor.Process(path, req.HttpContext, result.Value.Content, log);
+					response = await processor.Process(path, req.HttpContext, result.Value.Content, _log);
 					break;
 				}
 			}
-			
+
 			_ = UploadCache(key, response as FileContentResult).ContinueWith(CacheUploadFailed, TaskContinuationOptions.OnlyOnFaulted);
 
 			var properties = await blob.GetPropertiesAsync();
